@@ -6,7 +6,7 @@ const web3 = new Web3(rpcArchive);
 
 const votingEscrowContract = '0x35361C9c2a324F5FB8f3aed2d7bA91CE1410893A';
 const bribeContract = '0xc401adf58F18AF7fD1bf88d5a29a203d3B3783B2';
-const minAmount = 160;
+const minAmount = 165;
 
 let BLOCK_START = 0, BLOCK_END = 0;
 
@@ -18,7 +18,7 @@ const bribe_abi = JSON.parse(fs.readFileSync('./bribe-abi.js'));
 const bribe = new web3.eth.Contract(bribe_abi, bribeContract);
 let epoch;
 async function scanBlockchain(start, end) {
-    let size = 1000;
+    let size = 1000, total = 0;
     for (let i = start; i < end; i += size) {
         await new Promise(resolve => setTimeout(resolve, 1000));
         const from = i;
@@ -36,25 +36,14 @@ async function scanBlockchain(start, end) {
                             const u = e.returnValues;
                             const amount = parseInt(web3.utils.fromWei(u.value));
                             const line = `  ${u.provider}, id: ${u.tokenId}, amount: ${amount}`;
-                            if( amount < minAmount ){
-                                console.log(` IGNORE: ${line}`);
-                                continue;
-                            }
                             if( u.locktime < epoch ){
-                                console.log(` DISCARD: ${line}`);
+                                //console.log(` DISCARD: ${line}`);
                                 continue;
                             }
+                            total += amount;
                             console.log(`OK: ${line}`);
-                            const r = {
-                                provider: u.provider,
-                                tokenId: u.tokenId,
-                                value: u.value,
-                                locktime: u.locktime,
-                                deposit_type: u.deposit_type,
-                                ts: u.ts,
-                            }
-                            address.push(r);
-                            info.push(line);
+                            address[u.provider] = address[u.provider] || 0;
+                            address[u.provider] += amount;
                         }
                     }
                 });
@@ -62,8 +51,15 @@ async function scanBlockchain(start, end) {
             console.log(e.toString());
         }
     }
-    fs.writeFileSync('../vara-weekly-lockers.txt', JSON.stringify(address) );
-    fs.writeFileSync('../vara-weekly-lockers-info.txt', info.join('\n') );
+    info.push(`Total: ${total} VARA locked.`);
+    for( let user in address ){
+        const amount = address[user];
+        if( amount < minAmount ){
+            continue;
+        }
+        info.push(`${user}: ${amount}`);
+    }
+    fs.writeFileSync('../vara-weekly-lockers.txt', info.join('\n') );
 }
 async function getEpochBlock(){
     const latestBlock = await web3.eth.getBlock("latest");
