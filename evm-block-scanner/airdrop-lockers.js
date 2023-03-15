@@ -10,12 +10,60 @@ const Web3 = require('web3');
 const web3 = new Web3(rpcArchive);
 
 let address = [], info = [];
-const abi = JSON.parse(fs.readFileSync("./airdrop-lockers.abi", "utf8"));
+const abi = JSON.parse(fs.readFileSync("./abi/VotingEscrow.json", "utf8"));
 const ctx = new web3.eth.Contract(abi, contractAddress);
 
-const bribe_abi = JSON.parse(fs.readFileSync('./bribe-abi.js'));
-const bribe = new web3.eth.Contract(bribe_abi, '0xc401adf58F18AF7fD1bf88d5a29a203d3B3783B2');
+const bribe_abi = JSON.parse(fs.readFileSync('./abi/ExternalBribe.json'));
+const bribe = new web3.eth.Contract(bribe_abi, '0xb692Bb6FEC4AB78C117Ac318c434946862F8aB21');
 let epoch;
+
+async function getBlock(block){
+    console.log(`getBlock: ${block}`)
+    try {
+        await ctx.getPastEvents({fromBlock: block, toBlock: block+1000},
+            async function (error, events) {
+                if (error) {
+                    console.log(error);
+                } else {
+                    await onEvents(events);
+                }
+            });
+    }catch(e){
+        console.log(e.toString());
+    }
+}
+
+/*
+1 VARA locked for 1 year = 0.25 veVARA
+1 VARA locked for 2 years = 0.50 veVARA
+1 VARA locked for 3 years = 0.75 veVARA
+1 VARA locked for 4 years = 1.00 veVARA
+* */
+function computeVeVARA(amount, locktime, ts){
+    const days = (locktime - ts) / 86400;
+    const vePerDay = 0.25/365;
+    console.log('days', days, 'vePerDay', vePerDay);
+    return 0;
+}
+async function onEvents(events){
+    for (let j = 0; j < events.length; j++) {
+        const e = events[j];
+        if (!e.event) continue;
+        if (e.event != 'Deposit') continue;
+        const u = e.returnValues;
+        const veVARA = computeVeVARA(u.value, u.locktime, u.ts);
+        const line = `  ${u.provider}, VARA: ${u.value}, veVARA: ${veVARA}`;
+        if( u.locktime < epoch ){
+            console.log(` DISCARD: ${line}`);
+            continue;
+        }else {
+            console.log(`${line}`);
+        }
+        info.push(line);
+        break;
+    }
+}
+
 async function scanBlockchain(start, end) {
     let size = 1000;
     for (let i = start; i < end; i += size) {
@@ -26,33 +74,11 @@ async function scanBlockchain(start, end) {
         info.push(`@${i}`);
         try {
             await ctx.getPastEvents({fromBlock: from, toBlock: to},
-                function (error, events) {
+                async function (error, events) {
                     if (error) {
                         console.log(error);
                     } else {
-                        for (let j = 0; j < events.length; j++) {
-                            const e = events[j];
-                            if (!e.event) continue;
-                            if (e.event != 'Deposit') continue;
-                            const u = e.returnValues;
-                            const line = `  ${u.provider}, id: ${u.tokenId}, amount: ${u.value/1e18}`;
-                            if( u.locktime < epoch ){
-                                console.log(` DISCARD: ${line}`);
-                                continue;
-                            }else {
-                                console.log(`${line}`);
-                            }
-                            const r = {
-                                provider: u.provider,
-                                tokenId: u.tokenId,
-                                value: u.value,
-                                locktime: u.locktime,
-                                deposit_type: u.deposit_type,
-                                ts: u.ts,
-                            }
-                            address.push(r);
-                            info.push(line);
-                        }
+                        await onEvents(events);
                     }
                 });
         }catch(e){
@@ -77,9 +103,10 @@ async function getEpochBlock(){
     }
 }
 async function main() {
-    BLOCK_END = parseInt(await web3.eth.getBlockNumber());
-    await getEpochBlock();
-    await scanBlockchain(BLOCK_START, BLOCK_END);
+    // BLOCK_END = parseInt(await web3.eth.getBlockNumber())
+    // await getEpochBlock()
+    await getBlock(3897052)
+    // await scanBlockchain(BLOCK_START, BLOCK_END);
 }
 
 main();
