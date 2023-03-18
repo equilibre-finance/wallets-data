@@ -26,13 +26,10 @@ let epoch;
 * */
 const YEAR = 365;
 const DAY = 86400;
+const FACTOR = 0.25/365;
 function computeVeVARA(amount, locktime, ts){
-    const days = (locktime - ts) / DAY;
-    const years = days / YEAR;
-    const iMAXTIME = 4 * YEAR * DAY
-    const slope = amount / iMAXTIME;
-    const bias = slope * (locktime - ts) * years;
-    return parseFloat(bias);
+    const days = parseInt((locktime - ts) / DAY);
+    return parseFloat( FACTOR * days * amount );
 }
 
 async function onNewEvent(error, events){
@@ -47,7 +44,7 @@ async function onNewEvent(error, events){
             const amount = parseFloat(web3.utils.fromWei(u.value));
             const ve = await computeVeVARA(amount, parseInt(u.locktime), parseInt(u.ts));
             const days = parseInt(( u.locktime - u.ts) / DAY);
-            const line = `${u.provider}, VARA: ${amount}, veVARA: ${ve}, days: ${days}`;
+            const line = `- ${u.provider}, VARA: ${amount}, veVARA: ${ve}, days: ${days}`;
             if( u.locktime < epoch ){
                 console.log(` DISCARD: ${line}`);
                 continue;
@@ -129,6 +126,7 @@ async function main() {
     // computeVeVARA(360, 1678318983+(YEAR*DAY*2), 1678318983);
     // computeVeVARA(360, 1678318983+(YEAR*DAY*4), 1678318983);
     // await scanByBlock(3897052);
+
     let blocks;
     try {
         blocks = await getBlocksFromLastEpoch();
