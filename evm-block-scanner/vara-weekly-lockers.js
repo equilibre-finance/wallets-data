@@ -42,8 +42,11 @@ async function onNewEvent(error, events){
             if (e.event != 'Deposit') continue;
             const u = e.returnValues;
             const amount = parseFloat(web3.utils.fromWei(u.value));
+            if( amount == 0 ) continue;
             const ve = await computeVeVARA(amount, parseInt(u.locktime), parseInt(u.ts));
+            if( ve == 0 ) continue;
             const days = parseInt(( u.locktime - u.ts) / DAY);
+            if( days == 0 ) continue;
             const line = `- ${u.provider}, VARA: ${amount}, veVARA: ${ve}, days: ${days}`;
             if( u.locktime < epoch ){
                 console.log(` DISCARD: ${line}`);
@@ -82,7 +85,7 @@ async function scanBlockchain(start, end) {
             console.log(e.toString());
         }
     }
-    lines.push(`# Total: VARA ${totalVARA}, veVARA ${totalVE}`);
+    info.push(`# Total: VARA ${totalVARA}, veVARA ${totalVE}`);
     for( let user in address ){
         const amount = address[user];
         if( amount < minAmount ){
@@ -92,6 +95,7 @@ async function scanBlockchain(start, end) {
     }
     fs.writeFileSync('../vara-weekly-lockers.md', info.join('\n') );
     fs.writeFileSync('../vara-weekly-lockers.csv', lines.join('\n') );
+    fs.writeFileSync('../vara-weekly-lockers.json', JSON.stringify(lines) );
 }
 async function getBlocksFromLastEpoch(){
     let BLOCK_START = 0, BLOCK_END = 0;
