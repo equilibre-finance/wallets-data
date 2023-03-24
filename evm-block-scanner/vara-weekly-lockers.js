@@ -79,16 +79,18 @@ async function scanBlockchain(config) {
     const TOTAL = `# Total: VARA ${totalVARA}, veVARA ${totalVE}`;
     console.log(TOTAL);
     info.push(TOTAL);
+    let args = [];
     for (let user in address) {
         const amount = address[user];
         if (amount < minAmount) {
             continue;
         }
         lines.push(`${user},${amount}`);
+        args.push(user);
     }
     fs.writeFileSync('../vara-weekly-lockers.md', info.join('\n'));
     fs.writeFileSync('../vara-weekly-lockers.csv', lines.join('\n'));
-    fs.writeFileSync('../vara-weekly-lockers.json', JSON.stringify(lines));
+    fs.writeFileSync('../vara-weekly-lockers.json', JSON.stringify(args));
 }
 
 async function getBlocksFromLastEpoch() {
