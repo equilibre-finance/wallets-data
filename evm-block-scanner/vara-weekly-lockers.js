@@ -1,7 +1,6 @@
 'use strict'
 const rpcArchive = 'https://evm.data.equilibre.kava.io';
 const fs = require('fs');
-const moment = require('moment');
 const Web3 = require('web3');
 const web3 = new Web3(rpcArchive);
 
@@ -65,7 +64,7 @@ async function onNewEvent(error, events){
 
 async function scanByBlock(block){
     const from = parseInt(block);
-    const to = from + 1000;
+    const to = from + 1;
     try {
         await votingEscrow.getPastEvents({fromBlock: from, toBlock: to}, onNewEvent);
     }catch(e){
@@ -78,7 +77,7 @@ async function scanBlockchain(start, end) {
     for (let i = start; i < end; i += size) {
         await new Promise(resolve => setTimeout(resolve, 1000));
         const from = i;
-        const to = (i + size) - 1;
+        const to = (i + size);
         try {
             await votingEscrow.getPastEvents({fromBlock: from, toBlock: to}, onNewEvent);
         }catch(e){
@@ -91,7 +90,7 @@ async function scanBlockchain(start, end) {
         if( amount < minAmount ){
             continue;
         }
-        lines.push(`${user},${web3.utils.toWei(amount.toString())}`);
+        lines.push(`${user},${amount}`);
     }
     fs.writeFileSync('../vara-weekly-lockers.md', info.join('\n') );
     fs.writeFileSync('../vara-weekly-lockers.csv', lines.join('\n') );
@@ -126,10 +125,7 @@ async function getBlocksFromLastEpoch(){
 }
 async function main() {
 
-    // computeVeVARA(360, 1678318983+(YEAR*DAY), 1678318983);
-    // computeVeVARA(360, 1678318983+(YEAR*DAY*2), 1678318983);
-    // computeVeVARA(360, 1678318983+(YEAR*DAY*4), 1678318983);
-    // await scanByBlock(3897052);
+    // return await scanByBlock(4083807);
 
     let blocks;
     try {
@@ -140,6 +136,7 @@ async function main() {
 
     try {
         await scanBlockchain(blocks.BLOCK_START, blocks.BLOCK_END);
+        // await scanBlockchain(4083807, 4083808);
     }catch(e){
         console.log(`Error running the chain scan: ${e.toString()}`);
     }
