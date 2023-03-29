@@ -3,7 +3,7 @@
 let BLOCK_START, BLOCK_END;
 const fs = require('fs');
 // use this rpc for the scan
-const rpcArchive = 'https://opt-mainnet.g.alchemy.com/v2/NpqSV0boYrpNH67JIe8Z1jMKyWWbdbPF';
+const rpcArchive = process.env.OPT_RPC;
 const Web3 = require('web3');
 const web3 = new Web3(rpcArchive);
 
