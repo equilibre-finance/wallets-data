@@ -1,7 +1,6 @@
 'use strict'
 const rpcArchive = 'https://evm.data.equilibre.kava.io';
 const fs = require('fs');
-const moment = require('moment');
 const Web3 = require('web3');
 const web3 = new Web3(rpcArchive);
 
@@ -26,124 +25,98 @@ let epoch;
 * */
 const YEAR = 365;
 const DAY = 86400;
-const FACTOR = 0.25/365;
-function computeVeVARA(amount, locktime, ts){
+const FACTOR = 0.25 / 365;
+
+function computeVeVARA(amount, locktime, ts) {
     const days = parseInt((locktime - ts) / DAY);
-    return parseFloat( FACTOR * days * amount );
+    return parseFloat(FACTOR * days * amount);
 }
 
-async function onNewEvent(error, events){
-    if (error) {
-        console.log(error.toString());
-    } else {
-        for (let j = 0; j < events.length; j++) {
-            const e = events[j];
-            if (!e.event) continue;
-            if (e.event != 'Deposit') continue;
-            const u = e.returnValues;
-            const amount = parseFloat(web3.utils.fromWei(u.value));
-            if( amount == 0 ) continue;
-            const ve = await computeVeVARA(amount, parseInt(u.locktime), parseInt(u.ts));
-            if( ve == 0 ) continue;
-            const days = parseInt(( u.locktime - u.ts) / DAY);
-            if( days == 0 ) continue;
-            const line = `- ${u.provider}, VARA: ${amount}, veVARA: ${ve}, days: ${days}`;
-            if( u.locktime < epoch ){
-                console.log(` DISCARD: ${line}`);
-                continue;
-            }
-            totalVARA += amount;
-            totalVE += ve;
-            console.log(line);
-            info.push(line);
-            address[u.provider] = address[u.provider] || 0;
-            address[u.provider] += ve;
-        }
-    }
 
-}
-
-async function scanByBlock(block){
-    const from = parseInt(block);
-    const to = from + 1000;
-    try {
-        await votingEscrow.getPastEvents({fromBlock: from, toBlock: to}, onNewEvent);
-    }catch(e){
-        console.log(e.toString());
-    }
-}
-
-async function scanBlockchain(start, end) {
-    let size = 1000, lines = [];
-    for (let i = start; i < end; i += size) {
+async function scanBlockchain(config) {
+    let size = 1000, lines = [], endProcessing = false;
+    for (let i = config.startBlockNumber; i < config.endBlockNumber; i += size) {
+        if( endProcessing ) break;
         await new Promise(resolve => setTimeout(resolve, 1000));
-        const from = i;
-        const to = (i + size) - 1;
+        const args = {fromBlock: i, toBlock: i + size};
+        console.log(args);
         try {
-            await votingEscrow.getPastEvents({fromBlock: from, toBlock: to}, onNewEvent);
-        }catch(e){
+            await votingEscrow.getPastEvents(args, async function (error, events) {
+                if (error) {
+                    console.log(error.toString());
+                } else {
+                    for (let j = 0; j < events.length; j++) {
+                        const e = events[j];
+                        if (!e.event) continue;
+                        if (e.event !== 'Deposit') continue;
+                        const u = e.returnValues;
+                        const amount = parseFloat(web3.utils.fromWei(u.value));
+                        if (amount === 0) continue;
+                        const ve = await computeVeVARA(amount, parseInt(u.locktime), parseInt(u.ts));
+                        if (ve === 0) continue;
+                        const days = parseInt((u.locktime - u.ts) / DAY);
+                        if (days === 0) continue;
+                        const line = `- ${u.provider}, VARA: ${amount}, veVARA: ${ve}, days: ${days}`;
+                        if (u.ts > config.epochEnd ) {
+                            console.log(` STOP: (${i}) locktime=${u.locktime} epochEnd=${config.epochEnd}`);
+                            endProcessing = true;
+                            break;
+                        }
+                        totalVARA += amount;
+                        totalVE += ve;
+                        console.log(line);
+                        info.push(line);
+                        address[u.provider] = address[u.provider] || 0;
+                        address[u.provider] += ve;
+                    }
+                }
+
+            });
+        } catch (e) {
             console.log(e.toString());
         }
     }
-    info.push(`# Total: VARA ${totalVARA}, veVARA ${totalVE}`);
-    for( let user in address ){
+    const TOTAL = `# Total: VARA ${totalVARA}, veVARA ${totalVE}`;
+    console.log(TOTAL);
+    info.push(TOTAL);
+    let args = [];
+    for (let user in address) {
         const amount = address[user];
-        if( amount < minAmount ){
+        if (amount < minAmount) {
             continue;
         }
-        lines.push(`${user},${web3.utils.toWei(amount.toString())}`);
+        lines.push(`${user},${amount}`);
+        args.push(user);
     }
-    fs.writeFileSync('../vara-weekly-lockers.md', info.join('\n') );
-    fs.writeFileSync('../vara-weekly-lockers.csv', lines.join('\n') );
-    fs.writeFileSync('../vara-weekly-lockers.json', JSON.stringify(lines) );
+    fs.writeFileSync('../vara-weekly-lockers.md', info.join('\n'));
+    fs.writeFileSync('../vara-weekly-lockers.csv', lines.join('\n'));
+    fs.writeFileSync('../vara-weekly-lockers.json', JSON.stringify(args));
 }
-async function getBlocksFromLastEpoch(){
-    let BLOCK_START = 0, BLOCK_END = 0;
-    BLOCK_END = parseInt(await web3.eth.getBlockNumber());
-    let latestBlock = await web3.eth.getBlock("latest");
-    epoch = parseInt((await bribe.methods.getEpochStart(latestBlock.timestamp).call()).toString());
-    for(let i = BLOCK_END; i > 0 ; i -= 10000 ){
-        const currentBlock = await web3.eth.getBlock(i);
-        if( currentBlock.timestamp <= epoch){
-            BLOCK_END = i;
-            epoch = parseInt(currentBlock.timestamp);
-            break;
-        }
+
+async function getBlocksFromLastEpoch() {
+    const WEEK = 86400 * 7;
+    const latest = await web3.eth.getBlock("latest");
+    const epochEnd = parseInt((await bribe.methods.getEpochStart(latest.timestamp).call()).toString());
+    const epochStart = parseInt((await bribe.methods.getEpochStart(epochEnd - WEEK).call()).toString());
+    const blocksBehind = parseInt((latest.timestamp - epochStart) / 6.4);
+    const startBlockNumber = latest.number - blocksBehind;
+    const endBlockNumber = latest.number;
+    return {
+        epochStart: epochStart,
+        epochEnd: epochEnd,
+        startBlockNumber: startBlockNumber,
+        endBlockNumber: endBlockNumber
     }
-    BLOCK_START = BLOCK_END-86400;
-    latestBlock = await web3.eth.getBlock(BLOCK_START);
-    epoch = parseInt((await bribe.methods.getEpochStart(latestBlock.timestamp).call()).toString());
-    for(let i = BLOCK_START; i > 0 ; i -= 10000 ){
-        const currentBlock = await web3.eth.getBlock(i);
-        if( currentBlock.timestamp <= epoch){
-            BLOCK_START = i;
-            epoch = parseInt(currentBlock.timestamp);
-            break;
-        }
-    }
-    console.log(`BLOCK_START=${BLOCK_START}, BLOCK_END=${BLOCK_END}`)
-    return {BLOCK_START, BLOCK_END}
 }
+
 async function main() {
-
-    // computeVeVARA(360, 1678318983+(YEAR*DAY), 1678318983);
-    // computeVeVARA(360, 1678318983+(YEAR*DAY*2), 1678318983);
-    // computeVeVARA(360, 1678318983+(YEAR*DAY*4), 1678318983);
-    // await scanByBlock(3897052);
-
-    let blocks;
+    // return await scanByBlock(4083807);
+    const config = await getBlocksFromLastEpoch();
     try {
-        blocks = await getBlocksFromLastEpoch();
-    }catch(e){
-        console.log(`Error building {BLOCK_START, BLOCK_END}: ${e.toString()}`);
-    }
-
-    try {
-        await scanBlockchain(blocks.BLOCK_START, blocks.BLOCK_END);
-    }catch(e){
+        await scanBlockchain(config);
+    } catch (e) {
         console.log(`Error running the chain scan: ${e.toString()}`);
     }
-
 }
 
 main();
