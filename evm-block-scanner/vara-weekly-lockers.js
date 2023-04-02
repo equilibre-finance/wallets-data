@@ -50,15 +50,24 @@ async function scanBlockchain(config) {
                         if (!e.event) continue;
                         if (e.event !== 'Deposit') continue;
                         const u = e.returnValues;
-                        const amount = parseFloat(web3.utils.fromWei(u.value));
-                        if (amount === 0) continue;
-                        const ve = await computeVeVARA(amount, parseInt(u.locktime), parseInt(u.ts));
+                        let amount = u.value;
+                        const isAdd = u.deposit_type == 2 || u.deposit_type == 3 ? true : false;
+                        let locktime = u.locktime;
+                        if( isAdd ) {
+                            await new Promise(resolve => setTimeout(resolve, 1000));
+                            const LockedBalance = await votingEscrow.methods.locked(u.tokenId).call();
+                            locktime = LockedBalance.end.toString();
+                            amount = LockedBalance.amount.toString(); // if user is incrementing a lock time
+                        }
+                        amount = parseFloat(web3.utils.fromWei(amount));
+                        if( amount === 0 ) continue;
+                        const ve = await computeVeVARA(amount, parseInt(locktime), parseInt(u.ts));
                         if (ve === 0) continue;
-                        const days = parseInt((u.locktime - u.ts) / DAY);
+                        const days = parseInt((locktime - u.ts) / DAY);
                         if (days === 0) continue;
                         const line = `- ${u.provider}, VARA: ${amount}, veVARA: ${ve}, days: ${days}`;
                         if (u.ts > config.epochEnd ) {
-                            console.log(` STOP: (${i}) locktime=${u.locktime} epochEnd=${config.epochEnd}`);
+                            console.log(` STOP: (${i}) locktime=${locktime} epochEnd=${config.epochEnd}`);
                             endProcessing = true;
                             break;
                         }
@@ -112,6 +121,7 @@ async function getBlocksFromLastEpoch() {
 async function main() {
     // return await scanByBlock(4083807);
     const config = await getBlocksFromLastEpoch();
+    console.log(config);
     try {
         await scanBlockchain(config);
     } catch (e) {
