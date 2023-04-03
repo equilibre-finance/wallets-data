@@ -35,6 +35,9 @@ function computeVeVARA(amount, locktime, ts) {
 
 async function scanBlockchain(config) {
     let size = 1000, lines = [], endProcessing = false;
+    info.push(`|Address|Vara|veVara|Days|`);
+    info.push(`|:---|---:|---:|---:|`);
+
     for (let i = config.startBlockNumber; i < config.endBlockNumber; i += size) {
         if( endProcessing ) break;
         await new Promise(resolve => setTimeout(resolve, 1000));
@@ -51,7 +54,7 @@ async function scanBlockchain(config) {
                         if (e.event !== 'Deposit') continue;
                         const u = e.returnValues;
                         let amount = u.value;
-                        const isAdd = u.deposit_type == 2 || u.deposit_type == 3 ? true : false;
+                        const isAdd = u.deposit_type == 2 ? true : false;
                         let locktime = u.locktime;
                         if( isAdd ) {
                             await new Promise(resolve => setTimeout(resolve, 1000));
@@ -65,7 +68,7 @@ async function scanBlockchain(config) {
                         if (ve === 0) continue;
                         const days = parseInt((locktime - u.ts) / DAY);
                         if (days === 0) continue;
-                        const line = `- ${u.provider}, VARA: ${amount}, veVARA: ${ve}, days: ${days}`;
+                        const line = `|${u.provider}|${parseFloat(amount).toFixed(2)}|${parseFloat(ve).toFixed(2)}|${days}|`;
                         if (u.ts > config.epochEnd ) {
                             console.log(` STOP: (${i}) locktime=${locktime} epochEnd=${config.epochEnd}`);
                             endProcessing = true;
@@ -85,9 +88,9 @@ async function scanBlockchain(config) {
             console.log(e.toString());
         }
     }
-    const TOTAL = `# Total: VARA ${totalVARA}, veVARA ${totalVE}`;
+    const TOTAL = `# Totals:\n\n- VARA ${totalVARA}\n- veVARA ${totalVE}\n\n`;
     console.log(TOTAL);
-    info.push(TOTAL);
+    info = prepend(TOTAL, info);
     let args = [];
     for (let user in address) {
         const amount = address[user];
@@ -97,6 +100,7 @@ async function scanBlockchain(config) {
         lines.push(`${user},${amount}`);
         args.push(user);
     }
+
     fs.writeFileSync('../vara-weekly-lockers.md', info.join('\n'));
     fs.writeFileSync('../vara-weekly-lockers.csv', lines.join('\n'));
     fs.writeFileSync('../vara-weekly-lockers.json', JSON.stringify(args));
@@ -127,6 +131,12 @@ async function main() {
     } catch (e) {
         console.log(`Error running the chain scan: ${e.toString()}`);
     }
+}
+
+function prepend(value, array) {
+    let newArray = array.slice();
+    newArray.unshift(value);
+    return newArray;
 }
 
 main();
