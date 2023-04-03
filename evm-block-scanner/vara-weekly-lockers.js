@@ -1,4 +1,6 @@
 'use strict'
+const dotenv = require('dotenv');
+dotenv.config();
 const rpcArchive = process.env.KAVA_RPC;
 const fs = require('fs');
 const Web3 = require('web3');
@@ -54,13 +56,11 @@ async function scanBlockchain(config) {
                         if (e.event !== 'Deposit') continue;
                         const u = e.returnValues;
                         let amount = u.value;
-                        const isAdd = u.deposit_type == 2 ? true : false;
                         let locktime = u.locktime;
-                        if( isAdd ) {
+                        if( u.deposit_type == 2 ) {
                             await new Promise(resolve => setTimeout(resolve, 1000));
                             const LockedBalance = await votingEscrow.methods.locked(u.tokenId).call();
                             locktime = LockedBalance.end.toString();
-                            amount = LockedBalance.amount.toString(); // if user is incrementing a lock time
                         }
                         amount = parseFloat(web3.utils.fromWei(amount));
                         if( amount === 0 ) continue;
