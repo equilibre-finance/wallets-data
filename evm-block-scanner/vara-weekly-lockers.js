@@ -34,59 +34,59 @@ function computeVeVARA(amount, locktime, ts) {
     return parseFloat(FACTOR * days * amount);
 }
 
+async function onEventData( events ){
+    for (let j = 0; j < events.length; j++) {
+        const e = events[j];
+        if (!e.event) continue;
+        if (e.event !== 'Deposit') continue;
+        const u = e.returnValues;
+        let amount = u.value;
+        let locktime = u.locktime;
+        if( u.deposit_type == 2 ) {
+            // await new Promise(resolve => setTimeout(resolve, 1000));
+            const LockedBalance = await votingEscrow.methods.locked(u.tokenId).call();
+            locktime = LockedBalance.end;
+        }
+        amount = parseFloat(web3.utils.fromWei(amount));
+        if( amount === 0 ) continue;
+        const ve = computeVeVARA(amount, parseInt(locktime), parseInt(u.ts));
+        if (ve === 0) continue;
+        const days = parseInt((locktime - u.ts) / DAY);
+        if (days === 0) continue;
+        const line = `|${u.provider}|${parseFloat(amount).toFixed(2)}|${parseFloat(ve).toFixed(2)}|${days}|`;
+        if (u.ts > config.epochEnd ) {
+            console.log(` STOP: locktime=${locktime} epochEnd=${config.epochEnd}`);
+            endProcessing = true;
+            break;
+        }
+        totalVARA += amount;
+        totalVE += ve;
+        console.log(line);
+        info.push(line);
+        address[u.provider] = address[u.provider] || 0;
+        address[u.provider] += ve;
+    }
+}
 
-async function scanBlockchain(config) {
-    let size = 1000, lines = [], endProcessing = false;
+let endProcessing = false;
+let config;
+async function scanBlockchain() {
+    let size = config.debug ? 1 : 1000
+    let lines = [];
+
     info.push(`|Address|Vara|veVara|Days|`);
     info.push(`|:---|---:|---:|---:|`);
 
     for (let i = config.startBlockNumber; i < config.endBlockNumber; i += size) {
         if( endProcessing ) break;
-        await new Promise(resolve => setTimeout(resolve, 1000));
         const args = {fromBlock: i, toBlock: i + size};
-        console.log(args);
         try {
-            await votingEscrow.getPastEvents(args, async function (error, events) {
-                if (error) {
-                    console.log(error.toString());
-                } else {
-                    for (let j = 0; j < events.length; j++) {
-                        const e = events[j];
-                        if (!e.event) continue;
-                        if (e.event !== 'Deposit') continue;
-                        const u = e.returnValues;
-                        let amount = u.value;
-                        let locktime = u.locktime;
-                        if( u.deposit_type == 2 ) {
-                            await new Promise(resolve => setTimeout(resolve, 1000));
-                            const LockedBalance = await votingEscrow.methods.locked(u.tokenId).call();
-                            locktime = LockedBalance.end.toString();
-                        }
-                        amount = parseFloat(web3.utils.fromWei(amount));
-                        if( amount === 0 ) continue;
-                        const ve = await computeVeVARA(amount, parseInt(locktime), parseInt(u.ts));
-                        if (ve === 0) continue;
-                        const days = parseInt((locktime - u.ts) / DAY);
-                        if (days === 0) continue;
-                        const line = `|${u.provider}|${parseFloat(amount).toFixed(2)}|${parseFloat(ve).toFixed(2)}|${days}|`;
-                        if (u.ts > config.epochEnd ) {
-                            console.log(` STOP: (${i}) locktime=${locktime} epochEnd=${config.epochEnd}`);
-                            endProcessing = true;
-                            break;
-                        }
-                        totalVARA += amount;
-                        totalVE += ve;
-                        console.log(line);
-                        info.push(line);
-                        address[u.provider] = address[u.provider] || 0;
-                        address[u.provider] += ve;
-                    }
-                }
-
-            });
+            const r = await votingEscrow.getPastEvents(args);
+            await onEventData(r);
         } catch (e) {
             console.log(e.toString());
         }
+        await new Promise(resolve => setTimeout(resolve, 1000));
     }
     const TOTAL = `# Totals:\n\n- VARA ${totalVARA}\n- veVARA ${totalVE}\n\n`;
     console.log(TOTAL);
@@ -101,12 +101,14 @@ async function scanBlockchain(config) {
         args.push(user);
     }
 
-    fs.writeFileSync('../vara-weekly-lockers.md', info.join('\n'));
-    fs.writeFileSync('../vara-weekly-lockers.csv', lines.join('\n'));
-    fs.writeFileSync('../vara-weekly-lockers.json', JSON.stringify(args));
+    if( ! config.debug ) {
+        fs.writeFileSync('../vara-weekly-lockers.md', info.join('\n'));
+        fs.writeFileSync('../vara-weekly-lockers.csv', lines.join('\n'));
+        fs.writeFileSync('../vara-weekly-lockers.json', JSON.stringify(args));
+    }
 }
 
-async function getBlocksFromLastEpoch() {
+async function getBlocksFromLastEpoch(block) {
     const WEEK = 86400 * 7;
     const latest = await web3.eth.getBlock("latest");
     const epochEnd = parseInt((await bribe.methods.getEpochStart(latest.timestamp).call()).toString());
@@ -114,20 +116,25 @@ async function getBlocksFromLastEpoch() {
     const blocksBehind = parseInt((latest.timestamp - epochStart) / 6.4);
     const startBlockNumber = latest.number - blocksBehind;
     const endBlockNumber = latest.number;
-    return {
+    config = {
         epochStart: epochStart,
         epochEnd: epochEnd,
         startBlockNumber: startBlockNumber,
         endBlockNumber: endBlockNumber
+    };
+    if( block ){
+        config.debug = true;
+        config.startBlockNumber = block;
+        config.endBlockNumber = block+1;
     }
 }
 
 async function main() {
-    // return await scanByBlock(4083807);
-    const config = await getBlocksFromLastEpoch();
+    const block = 0;
+    await getBlocksFromLastEpoch(block);
     console.log(config);
     try {
-        await scanBlockchain(config);
+        await scanBlockchain();
     } catch (e) {
         console.log(`Error running the chain scan: ${e.toString()}`);
     }
