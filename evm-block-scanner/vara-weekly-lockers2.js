@@ -48,7 +48,7 @@ async function onEventData( events ){
         const days = parseInt((locktime - u.ts) / DAY);
         if (days === 0) continue;
         const date = new Date(u.ts*1000).toISOString();
-        const line = `|${u.provider}|${parseFloat(amount).toFixed(2)}|${parseFloat(ve).toFixed(2)}|${days}|${date}`;
+        const line = `|${u.provider}|${parseFloat(amount).toFixed(2)}|${parseFloat(ve).toFixed(2)}|${days}|${date}|`;
         if (u.ts < config.epochStart ) {
             continue;
         }

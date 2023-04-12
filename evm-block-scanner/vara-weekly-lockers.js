@@ -11,23 +11,16 @@ const bribeContract = '0xc401adf58F18AF7fD1bf88d5a29a203d3B3783B2';
 const minAmount = 165;
 
 let address = [], info = [], totalVARA = 0, totalVE = 0;
+let allData = [];
 const abi = JSON.parse(fs.readFileSync("./voting-escrow-abi.js", "utf8"));
 const votingEscrow = new web3.eth.Contract(abi, votingEscrowContract);
 
 const bribe_abi = JSON.parse(fs.readFileSync('./bribe-abi.js'));
 const bribe = new web3.eth.Contract(bribe_abi, bribeContract);
-let epoch;
 
-
-/*
-1 VARA locked for 1 year = 0.25 veVARA
-1 VARA locked for 2 years = 0.50 veVARA
-1 VARA locked for 3 years = 0.75 veVARA
-1 VARA locked for 4 years = 1.00 veVARA
-* */
 const YEAR = 365;
 const DAY = 86400;
-const FACTOR = 0.25 / 365;
+const FACTOR = 0.25 / YEAR;
 
 function computeVeVARA(amount, locktime, ts) {
     const days = parseInt((locktime - ts) / DAY);
@@ -53,7 +46,8 @@ async function onEventData( events ){
         if (ve === 0) continue;
         const days = parseInt((locktime - u.ts) / DAY);
         if (days === 0) continue;
-        const line = `|${u.provider}|${parseFloat(amount).toFixed(2)}|${parseFloat(ve).toFixed(2)}|${days}|`;
+        const date = new Date(u.ts*1000).toISOString();
+        const line = `|${u.provider}|${parseFloat(amount).toFixed(2)}|${parseFloat(ve).toFixed(2)}|${days}|${date}|`;
         if (u.ts > config.epochEnd ) {
             console.log(` STOP: locktime=${locktime} epochEnd=${config.epochEnd}`);
             endProcessing = true;
@@ -65,6 +59,7 @@ async function onEventData( events ){
         info.push(line);
         address[u.provider] = address[u.provider] || 0;
         address[u.provider] += ve;
+        allData.push({address: u.provider, amount: amount, ve: ve, days: days, date: date});
     }
 }
 
@@ -74,8 +69,8 @@ async function scanBlockchain() {
     let size = config.debug ? 1 : 1000
     let lines = [];
 
-    info.push(`|Address|Vara|veVara|Days|`);
-    info.push(`|:---|---:|---:|---:|`);
+    info.push(`|Address|Vara|veVara|Days|Date|`);
+    info.push(`|:---|---:|---:|---:|---:|`);
 
     for (let i = config.startBlockNumber; i < config.endBlockNumber; i += size) {
         if( endProcessing ) break;
@@ -105,6 +100,7 @@ async function scanBlockchain() {
         fs.writeFileSync('../vara-weekly-lockers.md', info.join('\n'));
         fs.writeFileSync('../vara-weekly-lockers.csv', lines.join('\n'));
         fs.writeFileSync('../vara-weekly-lockers.json', JSON.stringify(args));
+        fs.writeFileSync('../vara-weekly-lockers-all.json', JSON.stringify(allData));
     }
 }
 
