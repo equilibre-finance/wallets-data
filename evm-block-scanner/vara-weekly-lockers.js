@@ -5,7 +5,7 @@ const rpcArchive = process.env.KAVA_RPC;
 const fs = require('fs');
 const Web3 = require('web3');
 const web3 = new Web3(rpcArchive);
-
+const blacklist = ['0x3a724E0082b0E833670cF762Ea6bd711bcBdFf37'.toLowerCase()];
 const votingEscrowContract = '0x35361C9c2a324F5FB8f3aed2d7bA91CE1410893A';
 const bribeContract = '0xc401adf58F18AF7fD1bf88d5a29a203d3B3783B2';
 const minAmount = 165;
@@ -33,6 +33,8 @@ async function onEventData( events ){
         if (!e.event) continue;
         if (e.event !== 'Deposit') continue;
         const u = e.returnValues;
+        if( blacklist.indexOf(u.provider.toLowerCase()) !== -1 )
+            continue;
         let amount = u.value;
         let locktime = u.locktime;
         if( u.deposit_type == 2 ) {
@@ -47,7 +49,7 @@ async function onEventData( events ){
         const days = parseInt((locktime - u.ts) / DAY);
         if (days === 0) continue;
         const date = new Date(u.ts*1000).toISOString();
-        const line = `|${u.provider}|${parseFloat(amount).toFixed(2)}|${parseFloat(ve).toFixed(2)}|${days}|${date}|`;
+        const line = `|${user}|${parseFloat(amount).toFixed(2)}|${parseFloat(ve).toFixed(2)}|${days}|${date}|`;
         if (u.ts > config.epochEnd ) {
             console.log(` STOP: locktime=${locktime} epochEnd=${config.epochEnd}`);
             endProcessing = true;
