@@ -1,4 +1,5 @@
 'use strict'
+
 const dotenv = require('dotenv');
 dotenv.config();
 const rpcArchive = process.env.KAVA_RPC;
@@ -8,15 +9,13 @@ const web3 = new Web3(rpcArchive);
 
 const votingEscrowContract = '0x35361C9c2a324F5FB8f3aed2d7bA91CE1410893A';
 const bribeContract = '0xc401adf58F18AF7fD1bf88d5a29a203d3B3783B2';
-const minAmount = 1500;
+const MIN_AMOUNT = 1500, MIN_DAYS = 1400;
 
 let address = [], info = [], totalVARA = 0, totalVE = 0, json = [];
 const abi = JSON.parse(fs.readFileSync("./voting-escrow-abi.js", "utf8"));
 const votingEscrow = new web3.eth.Contract(abi, votingEscrowContract);
 
 const bribe_abi = JSON.parse(fs.readFileSync('./bribe-abi.js'));
-const bribe = new web3.eth.Contract(bribe_abi, bribeContract);
-let epoch;
 
 
 const YEAR = 365;
@@ -146,7 +145,7 @@ async function getBlocksFromDates(block, epochStart, epochEnd) {
 
 async function main() {
     const block = 0;
-    await getBlocksFromDates(block, 1680825600, 1681776000);
+    await getBlocksFromDates(block, 1680825600, 1681862399);
     try {
         await scanBlockchain();
     } catch (e) {
