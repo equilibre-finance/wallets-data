@@ -3,12 +3,14 @@
 - VARA 4418069.852766047
 - veVARA 3956423.7776668505
 
--JSON: vara-weekly-lockers2.json
+---
+
+JSON: vara-weekly-lockers2.json
 
 ---
 
 
-|Address|Vara|veVara|Days|Date|Type|LockedBalance
+|Address|Vara|veVara|Days|Date|Type|LockedBalance|
 |:---|---:|---:|---:|---:|---:|---:|
 |0x8825be873e6578F1703628281600d5887C41C55A|0.20|0.20|1426|2023-04-07T00:00:47.000Z|0|38.30881492157765|
 |0x8825be873e6578F1703628281600d5887C41C55A|14.61|14.55|1454|2023-04-07T00:12:02.000Z|0|3483.391467911617|
