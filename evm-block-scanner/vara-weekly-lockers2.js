@@ -10,7 +10,7 @@ const votingEscrowContract = '0x35361C9c2a324F5FB8f3aed2d7bA91CE1410893A';
 const bribeContract = '0xc401adf58F18AF7fD1bf88d5a29a203d3B3783B2';
 const minAmount = 1500;
 
-let address = [], info = [], totalVARA = 0, totalVE = 0;
+let address = [], info = [], totalVARA = 0, totalVE = 0, json = [];
 const abi = JSON.parse(fs.readFileSync("./voting-escrow-abi.js", "utf8"));
 const votingEscrow = new web3.eth.Contract(abi, votingEscrowContract);
 
@@ -36,10 +36,10 @@ async function onEventData( events ){
         const u = e.returnValues;
         let amount = u.value;
         let locktime = u.locktime;
+        const locked = await votingEscrow.methods.locked(u.tokenId).call();
+        const LockedBalance = parseFloat(web3.utils.fromWei( (locked.amount).toString() ));
         if( u.deposit_type == 2 ) {
-            // await new Promise(resolve => setTimeout(resolve, 1000));
-            const LockedBalance = await votingEscrow.methods.locked(u.tokenId).call();
-            locktime = LockedBalance.end;
+            locktime = locked.end;
         }
         amount = parseFloat(web3.utils.fromWei(amount));
         if( amount === 0 ) continue;
@@ -48,8 +48,9 @@ async function onEventData( events ){
         const days = parseInt((locktime - u.ts) / DAY);
         if (days === 0) continue;
         const date = new Date(u.ts*1000).toISOString();
-        const line = `|${u.provider}|${parseFloat(amount).toFixed(2)}|${parseFloat(ve).toFixed(2)}|${days}|${date}|`;
+        const line = `|${u.provider}|${parseFloat(amount).toFixed(2)}|${parseFloat(ve).toFixed(2)}|${days}|${date}|${u.deposit_type}|${LockedBalance}|`;
         if (u.ts < config.epochStart ) {
+            console.log(` IGNORE: locktime=${locktime} epochEnd=${config.epochEnd}`);
             continue;
         }
         if (u.ts > config.epochEnd ) {
@@ -57,13 +58,19 @@ async function onEventData( events ){
             endProcessing = true;
             break;
         }
-        if (amount < minAmount) {
-            continue;
-        }
         totalVARA += amount;
         totalVE += ve;
         console.log(line);
         info.push(line);
+        json.push({
+            wallet: u.provider,
+            amount: amount,
+            ve: ve,
+            days: days,
+            date: u.ts,
+            type: u.deposit_type,
+            LockedBalance: LockedBalance
+        });
         address[u.provider] = address[u.provider] || 0;
         address[u.provider] += amount;
     }
@@ -71,23 +78,35 @@ async function onEventData( events ){
 
 let endProcessing = false;
 let config;
+
+async function getEvents(args){
+    let status;
+    try {
+        const r = await votingEscrow.getPastEvents(args);
+        await onEventData(r);
+        status = true;
+    } catch (e) {
+        console.log(e.toString());
+        status = false;
+    }
+    await new Promise(resolve => setTimeout(resolve, 1000));
+    return status;
+}
 async function scanBlockchain() {
     let size = config.debug ? 1 : 1000
     let lines = [];
 
-    info.push(`|Address|Vara|veVara|Days|Date`);
-    info.push(`|:---|---:|---:|---:|---:|`);
+    info.push(`|Address|Vara|veVara|Days|Date|Type|`);
+    info.push(`|:---|---:|---:|---:|---:|LockedBalance|`);
 
     for (let i = config.startBlockNumber; i < config.endBlockNumber; i += size) {
         if( endProcessing ) break;
-        const args = {fromBlock: i, toBlock: i + size};
-        try {
-            const r = await votingEscrow.getPastEvents(args);
-            await onEventData(r);
-        } catch (e) {
-            console.log(e.toString());
+        const args = {fromBlock: i+1, toBlock: i + size};
+        console.log(args);
+        while( ! await getEvents(args) ){
+            console.log(' - trying again: ', args);
         }
-        await new Promise(resolve => setTimeout(resolve, 1000));
+
     }
     const TOTAL = `# Totals:\n\n- VARA ${totalVARA}\n- veVARA ${totalVE}\n\n`;
     console.log(TOTAL);
@@ -102,6 +121,7 @@ async function scanBlockchain() {
     if( ! config.debug ) {
         fs.writeFileSync('../vara-weekly-lockers2.md', info.join('\n'));
         fs.writeFileSync('../vara-weekly-lockers2.csv', lines.join('\n'));
+        fs.writeFileSync('../vara-weekly-lockers2-user-amount.json', JSON.stringify(args));
         fs.writeFileSync('../vara-weekly-lockers2.json', JSON.stringify(args));
     }
 }
