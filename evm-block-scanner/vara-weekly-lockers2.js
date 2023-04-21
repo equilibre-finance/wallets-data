@@ -95,8 +95,8 @@ async function scanBlockchain() {
     let size = config.debug ? 1 : 1000
     let lines = [];
 
-    info.push(`|Address|Vara|veVara|Days|Date|Type|`);
-    info.push(`|:---|---:|---:|---:|---:|LockedBalance|`);
+    info.push(`|Address|Vara|veVara|Days|Date|Type|LockedBalance`);
+    info.push(`|:---|---:|---:|---:|---:|---:|---:|`);
 
     for (let i = config.startBlockNumber; i < config.endBlockNumber; i += size) {
         if( endProcessing ) break;
