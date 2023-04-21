@@ -107,7 +107,7 @@ async function scanBlockchain() {
         }
 
     }
-    const TOTAL = `# Totals:\n\n- VARA ${totalVARA}\n- veVARA ${totalVE}\n\n`;
+    const TOTAL = `# Totals:\n\n- VARA ${totalVARA}\n- veVARA ${totalVE}\n\n-JSON: vara-weekly-lockers2.json\n\n---\n\n`;
     console.log(TOTAL);
     info = prepend(TOTAL, info);
     let args = [];
@@ -119,9 +119,7 @@ async function scanBlockchain() {
 
     if( ! config.debug ) {
         fs.writeFileSync('../vara-weekly-lockers2.md', info.join('\n'));
-        fs.writeFileSync('../vara-weekly-lockers2.csv', lines.join('\n'));
-        fs.writeFileSync('../vara-weekly-lockers2-user-amount.json', JSON.stringify(args));
-        fs.writeFileSync('../vara-weekly-lockers2.json', JSON.stringify(args));
+        fs.writeFileSync('../vara-weekly-lockers2.json', JSON.stringify(json));
     }
 }
 
