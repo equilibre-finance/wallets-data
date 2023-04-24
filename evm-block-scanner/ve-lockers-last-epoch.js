@@ -1,22 +1,24 @@
 'use strict'
-
+process.on('uncaughtException', function (err) {
+    console.error(err.toString());
+    console.trace();
+    process.exit(0);
+});
 const dotenv = require('dotenv');
 dotenv.config();
 const rpcArchive = process.env.KAVA_RPC;
 const fs = require('fs');
 const Web3 = require('web3');
-const web3 = new Web3(rpcArchive);
+
 
 const votingEscrowContract = '0x35361C9c2a324F5FB8f3aed2d7bA91CE1410893A';
 const bribeContract = '0xc401adf58F18AF7fD1bf88d5a29a203d3B3783B2';
-const MIN_AMOUNT = 1500, MIN_DAYS = 1400;
 
 let address = [], info = [], totalVARA = 0, totalVE = 0, json = [];
 const abi = JSON.parse(fs.readFileSync("./voting-escrow-abi.js", "utf8"));
-const votingEscrow = new web3.eth.Contract(abi, votingEscrowContract);
 
 const bribe_abi = JSON.parse(fs.readFileSync('./bribe-abi.js'));
-const bribe = new web3.eth.Contract(bribe_abi, bribeContract);
+
 
 
 const YEAR = 365;
@@ -28,7 +30,7 @@ function computeVeVARA(amount, locktime, ts) {
     return parseFloat(FACTOR * days * amount);
 }
 
-async function onEventData( events ){
+async function onEventData( web3, votingEscrow, events ){
     for (let j = 0; j < events.length; j++) {
         const e = events[j];
         if (!e.event) continue;
@@ -82,26 +84,29 @@ let config;
 async function getEvents(args){
     let status;
     try {
+        const web3 = new Web3(rpcArchive);
+        const votingEscrow = new web3.eth.Contract(abi, votingEscrowContract);
         const r = await votingEscrow.getPastEvents(args);
-        await onEventData(r);
+        await onEventData(web3, votingEscrow, r);
         status = true;
     } catch (e) {
-        console.log(e.toString());
+        console.log(`try: `, args, e.toString());
+        await new Promise(resolve => setTimeout(resolve, 10000));
         status = false;
     }
     await new Promise(resolve => setTimeout(resolve, 1000));
+    if(!status) console.log(`getEvents...`)
     return status;
 }
 async function scanBlockchain() {
     let size = config.debug ? 1 : 1000
-    let lines = [];
 
     info.push(`|Address|Vara|veVara|Days|Date|Type|LockedBalance`);
     info.push(`|:---|---:|---:|---:|---:|---:|---:|`);
 
     for (let i = config.startBlockNumber; i < config.endBlockNumber; i += size) {
         if( endProcessing ) break;
-        const args = {fromBlock: i+1, toBlock: i + size};
+        const args = {fromBlock: i, toBlock: i + size - 1};
         console.log(args);
         while( ! await getEvents(args) ){
             console.log(' - trying again: ', args);
@@ -111,13 +116,6 @@ async function scanBlockchain() {
     const TOTAL = `# Totals:\n\n- VARA ${totalVARA}\n- veVARA ${totalVE}\n\n-JSON: vara-weekly-lockers2.json\n\n---\n\n`;
     console.log(TOTAL);
     info = prepend(TOTAL, info);
-    let args = [];
-    for (let user in address) {
-        const amount = address[user];
-        lines.push(`${user},${amount}`);
-        args.push(user);
-    }
-
     if( ! config.debug ) {
         fs.writeFileSync('../ve-lockers-last-epoch.md', info.join('\n'));
         fs.writeFileSync('../ve-lockers-last-epoch.json', JSON.stringify(json));
@@ -125,6 +123,7 @@ async function scanBlockchain() {
 }
 
 async function getBlocksFromDates(block, epochStart, epochEnd) {
+    const web3 = new Web3(rpcArchive);
     const latest = await web3.eth.getBlock("latest");
     const blocksBehind = parseInt((latest.timestamp - epochStart) / 6.4);
     const startBlockNumber = latest.number - blocksBehind;
@@ -143,6 +142,8 @@ async function getBlocksFromDates(block, epochStart, epochEnd) {
 }
 
 async function getBlocksFromLastEpoch(block) {
+    const web3 = new Web3(rpcArchive);
+    const bribe = new web3.eth.Contract(bribe_abi, bribeContract);
     const WEEK = 86400 * 7;
     const latest = await web3.eth.getBlock("latest");
     const epochEnd = parseInt((await bribe.methods.getEpochStart(latest.timestamp).call()).toString());
